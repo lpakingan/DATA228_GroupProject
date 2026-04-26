@@ -1,0 +1,58 @@
+# --- Data  ---
+data/
+*.json
+*.csv
+*.parquet
+*.zip
+*.tar
+*.tar.gz
+*.crc
+
+# --- Spark local artifacts ---
+spark-warehouse/
+metastore_db/
+derby.log
+
+# --- MLflow ---
+mlruns/
+mlartifacts/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- Virtual envs ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- IDE / editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Secrets / local config ---
+.env
+.env.local
+*.pem
+*.key
