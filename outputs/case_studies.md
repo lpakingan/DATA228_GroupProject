@@ -133,10 +133,11 @@ The model is very sensitive to contamination. When the contamination value incre
 At lower contamination levels, only the most extreme outliers are identified, while higher values include more moderate deviations. A contamination level of 0.05 provides a balanced trade-off between detection coverage and anomaly strength.
 
 ### Note on Heatmap:
-The negative correlation between avg_stars_given and anomaly score (-0.42) indicates that the model currently associates lower ratings with higher suspicion, suggesting that Review Bombers (accounts created for targeted negative attacks) are easier for the Isolation Forest to detect than Promotional Boosters.
+The negative correlation between avg_stars_given and anomaly score (-0.42) indicates that the model currently associates lower ratings with higher suspicion, suggesting that Review Bombers (accounts created for targeted negative attacks) are easier for the Isolation Forest to detect than reviews that are made to boost ratings.
 
-Because positive reviews are the "norm" on Yelp, an account that posts fake 5-star reviews "blends in" with organic users more easily compared to someone posting aggressive 1-star reviews.
-To catch these fake reviewers, we rely more heavily on the Review Velocity feature (0.50 correlation), which flags them based on how fast they post rather than what they rate.
+### Extra:
+Because positive reviews are the "norm" on Yelp, an account that posts fake 5-star reviews "blends in" with organic users more easily compared to someone posting 1-star reviews aggressively.
+As a result, rating-based features alone are not always sufficient to identify suspicious users. The results suggest that review velocity (reviews_per_day) is a strong contributing factor in identifying anomalous users.
 ---
 
 *Generated from `user_anomaly_analysis.ipynb`.*
