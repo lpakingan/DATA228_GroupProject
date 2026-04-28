@@ -125,19 +125,24 @@ Key Signals: Extremely high review frequency (up to 87 times the median user)
 - Likely to be coordinated or automated behavior
 - ~0.26 reviews/day over the account lifetime suggests the presence of non-organic activity patterns
 ---
-Note on Social Connection and Suspicion Relationships:
+**Note on Social Connection and Suspicion Relationships:**
+
 Strong relationship between social connectivity (friends) and suspicion. 
 The model heavily flags users with zero friends as high-risk anomalies (the red cluster at x=0), while also isolating 'Extreme Power Users' with outlier friend counts exceeding 10,000
 ---
-Note on Model Sensitivity Analysis:
+**Note on Model Sensitivity Analysis:**
+
 The model is very sensitive to contamination. When the contamination value increases, the model labels more users as anomalies, but not all of them are extremely suspicious.
 At lower contamination levels, only the most extreme outliers are identified, while higher values include more moderate deviations. A contamination level of 0.05 provides a balanced trade-off between detection coverage and anomaly strength.
 ---
-Note on Heatmap:
+**Note on Heatmap:**
+
 The negative correlation between avg_stars_given and anomaly score (-0.42) indicates that the model currently associates lower ratings with higher suspicion, suggesting that Review Bombers (accounts created for targeted negative attacks) are easier for the Isolation Forest to detect than reviews that are made to boost ratings.
 ---
-Extra:
+**Extra:**
+
 Because positive reviews are the "norm" on Yelp, an account that posts fake 5-star reviews "blends in" with organic users more easily compared to someone posting 1-star reviews aggressively.
+
 As a result, rating-based features alone are not always sufficient to identify suspicious users. The results suggest that review velocity (reviews_per_day) is a strong contributing factor in identifying anomalous users.
 ---
 
