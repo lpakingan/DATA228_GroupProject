@@ -71,7 +71,7 @@ These users have:
 - moderate to high review activity
 
 **Interpretation:**  
-This combination of strong negative bias and complete social isolation suggests potentially behavior that has been artificially created. These accounts may have been created primarily to post negative reviews, consistent with review bombing patterns.
+This combination of strong negative bias and complete social isolation suggests potential behavior that has been artificially created. These accounts may have been created primarily to post negative reviews, consistent with review bombing patterns.
 
 Not all users in this group exhibit extreme behavior (e.g., some have mixed ratings).
 This indicates that anomaly detection captures a spectrum of deviations from typical user behavior.
@@ -124,7 +124,7 @@ Key Signals: Extremely high review frequency (up to 87 times the median user)
 - Likely to be coordinated or automated behavior
 - ~0.26 reviews/day over the account lifetime suggests the presence of non-organic activity patterns
 
-### Note on Social Connection and Supspicion Relationships:
+### Note on Social Connection and Suspicion Relationships:
 Strong relationship between social connectivity (friends) and suspicion. 
 The model heavily flags users with zero friends as high-risk anomalies (the red cluster at x=0), while also isolating 'Extreme Power Users' with outlier friend counts exceeding 10,000
 
