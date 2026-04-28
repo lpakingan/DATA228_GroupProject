@@ -145,7 +145,10 @@ The negative correlation between avg_stars_given and anomaly score (-0.42) indic
 ---
 **Extra:**
 
-Because positive reviews are the "norm" on Yelp, an account that posts fake 5-star reviews "blends in" with organic users more easily compared to someone posting 1-star reviews aggressively. As a result, rating-based features alone are not always sufficient to identify suspicious users. The results suggest that review velocity (reviews_per_day) is a strong contributing factor in identifying anomalous users.
+Because positive reviews are the "norm" on Yelp, an account that posts fake 5-star reviews "blends in" with organic users more easily compared to someone posting 1-star reviews aggressively. 
+
+As a result, rating-based features alone are not always sufficient to identify suspicious users. The results suggest that review velocity (reviews_per_day) is a strong contributing factor in identifying anomalous users.
+
 ---
 
 *Generated from `user_anomaly_analysis.ipynb`.*
