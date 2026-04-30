@@ -10,6 +10,7 @@ Logs:
   - MLflow params, metrics, and output artifact
 """
 
+import os
 from pathlib import Path
 
 import mlflow
@@ -17,6 +18,9 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 import mlflow.sklearn
+import sys
+import sklearn
+
 
 # Get the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +28,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT = PROJECT_ROOT / "data" / "processed" / "user_features.parquet"
 DEFAULT_OUTPUT = PROJECT_ROOT / "outputs" / "user_anomaly_scores.parquet"
 DEFAULT_EXPERIMENT = "user_anomaly_detection"
+# Match local server: mlflow server --host 127.0.0.1 --port 5001
+# Override: export MLFLOW_TRACKING_URI="file:/path/to/mlruns" (no server)
+TRACKING_URI_DEFAULT = "http://localhost:5001"
 MODEL_SELECTION_OUTPUT = PROJECT_ROOT / "outputs" / "user_anomaly_model_runs.parquet"
 
 # User features to use for anomaly detection
@@ -62,12 +69,14 @@ def main() -> None:
     if DEFAULT_CONFIG_NAME not in {cfg["name"] for cfg in CONFIGS}:
         raise ValueError(f"DEFAULT_CONFIG_NAME '{DEFAULT_CONFIG_NAME}' is not in CONFIGS")
 
-    # Read the user features
+    # Read the user features (large parquet = can sit here with no output for a while)
     print(f"Reading user features: {input_path}")
     user_df = pd.read_parquet(input_path)
+    print(f"Loaded {len(user_df):,} rows — validating columns…")
     validate_inputs(user_df)
 
     # Prepare the model input
+    print("Preparing feature matrix (numeric + impute)…")
     model_input = user_df[FEATURE_COLUMNS].copy()
     for col in FEATURE_COLUMNS:
         # Convert the column to numeric, handling errors by coercing to NaN
@@ -79,17 +88,21 @@ def main() -> None:
         # If the median is NaN, fill with 0
         model_input[col] = model_input[col].fillna(0 if pd.isna(median_val) else median_val)
 
-    # Set up MLflow
+    # Set up MLflow (URI must match where mlflow server listens, if you use HTTP)
+    print("Connecting to MLflow…")
+    mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", TRACKING_URI_DEFAULT))
     mlflow.set_experiment(DEFAULT_EXPERIMENT)
     run_summaries = []
 
     # Run the anomaly detection for each configuration
+    print(f"Training + scoring {len(CONFIGS)} configs (each can take several minutes)…")
     for cfg in CONFIGS:
         run_name = f"isolation_forest_{cfg['name']}"
         run_output_path = output_path.with_name(
             f"{output_path.stem}_{cfg['name']}{output_path.suffix}"
         )
         # Start an MLflow run for this configuration
+        print(f"[{cfg['name']}] Starting MLflow run (fit + score)…")
         with mlflow.start_run(run_name=run_name):
             # Log the configuration parameters
             mlflow.log_param("config_name", cfg["name"])
@@ -100,7 +113,13 @@ def main() -> None:
             mlflow.log_param("contamination", cfg["contamination"])
             mlflow.log_param("random_state", cfg["random_state"])
             mlflow.log_param("n_rows", len(model_input))
-
+            mlflow.log_param("python_version", sys.version.split()[0])
+            # Log the versions of the dependencies for reproducibility
+            mlflow.log_param("numpy_version", np.__version__)
+            mlflow.log_param("pandas_version", pd.__version__)
+            mlflow.log_param("sklearn_version", sklearn.__version__)
+            mlflow.log_param("mlflow_version", mlflow.__version__)
+            
             # Train the model
             model = IsolationForest(
                 n_estimators=cfg["n_estimators"],
