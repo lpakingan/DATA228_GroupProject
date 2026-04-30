@@ -93,6 +93,7 @@ def main() -> None:
     mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", TRACKING_URI_DEFAULT))
     mlflow.set_experiment(DEFAULT_EXPERIMENT)
     run_summaries = []
+    model_input_example = model_input.head(5)
 
     # Run the anomaly detection for each configuration
     print(f"Training + scoring {len(CONFIGS)} configs (each can take several minutes)…")
@@ -168,7 +169,7 @@ def main() -> None:
             mlflow.log_metric("anomaly_score_max", score_max)
             mlflow.log_metric("anomaly_score_min", score_min)
             # Log the output artifact
-            mlflow.sklearn.log_model(model, artifact_path="model")
+            mlflow.sklearn.log_model(model, name="model", input_example=model_input_example)
             mlflow.log_artifact(str(run_output_path))
 
             # Log the summary of the run
