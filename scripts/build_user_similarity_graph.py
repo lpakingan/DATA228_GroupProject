@@ -17,7 +17,7 @@ import itertools
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 REVIEW_INPUT = PROJECT_ROOT / "data" / "processed" / "review_features.parquet"
-SCORE_INPUT = PROJECT_ROOT / "data" / "processed" / "user_anomaly_scores.parquet"
+SCORE_INPUT = PROJECT_ROOT / "outputs" / "user_anomaly_scores.parquet"
 DEFAULT_OUTPUT = PROJECT_ROOT / "outputs" / "user_similarity_edges.parquet"
 
 DEFAULT_TIME_WINDOW = 7
@@ -31,7 +31,7 @@ def main():
 
     df = review_df.merge(score_df, on='user_id', how='left')
 
-    anomalous_df = df[df['is_anomaly'] == 1]
+    anomalous_df = df[df['is_anomaly'] == 1].copy()
 
     anomalous_df['date'] = pd.to_datetime(anomalous_df['date'])
 
