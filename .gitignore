@@ -56,3 +56,5 @@ Thumbs.db
 .env.local
 *.pem
 *.key
+data/
+outputs/

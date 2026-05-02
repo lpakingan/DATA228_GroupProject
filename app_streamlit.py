@@ -44,8 +44,8 @@ def _delta_columns(impact: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Yelp Suspicious Activity Dashboard", layout="wide")
-    st.title("Suspicious Activity Results")
+    st.set_page_config(page_title="Yelp Review Authenticity Dashboard", layout="wide")
+    st.title("Yelp Review Authenticity Detector")
 
     px = _try_import_plotly()
 
@@ -60,10 +60,7 @@ def main() -> None:
         impact_path = outputs_dir / "rating_impact.parquet"
         reviews_path = processed_dir / "restaurant_reviews.parquet"
         restaurants_path = processed_dir / "restaurants_base.parquet"
-
-        window_days = st.number_input("Spike window (days ±)", min_value=0, max_value=30, value=0, step=1)
-        plot_days = st.number_input("Timeline plot range (days ±)", min_value=7, max_value=180, value=30, step=7)
-        min_susp_users = st.slider("Minimum suspicious users (filter)", min_value=1, max_value=50, value=1, step=1)
+        clusters_path = outputs_dir / "user_clusters.parquet"
 
         st.caption("Required files:")
         st.code(
@@ -78,7 +75,7 @@ def main() -> None:
             language="text",
         )
 
-    missing = [p for p in [spikes_path, suspicious_path, impact_path, reviews_path, restaurants_path] if not p.exists()]
+    missing = [p for p in [spikes_path, suspicious_path, impact_path, reviews_path, restaurants_path, clusters_path] if not p.exists()]
     if missing:
         st.error("Missing required data files:")
         st.write([str(p) for p in missing])
@@ -89,25 +86,95 @@ def main() -> None:
     suspicious = load_parquet(str(suspicious_path))
     impact = load_parquet(str(impact_path))
     restaurants = load_business_names(str(restaurants_path))
+    clusters = load_parquet(str(clusters_path))
+    biz_reviews = load_parquet(str(reviews_path))
+    anomaly_scores = load_parquet(str(suspicious_path.parent / "user_anomaly_scores.parquet"))
 
     # Minimal cleanup
     for df in [spikes, suspicious, impact]:
         if "business_id" in df.columns:
             df["business_id"] = df["business_id"].astype(str)
 
-    suspicious_only = suspicious[pd.to_numeric(suspicious.get("suspicious_user_count"), errors="coerce").fillna(0) > 0].copy()
-    suspicious_only = suspicious_only[
-        pd.to_numeric(suspicious_only.get("suspicious_user_count"), errors="coerce").fillna(0) >= int(min_susp_users)
-    ]
-    suspicious_only = suspicious_only.merge(restaurants, on="business_id", how="left")
-    suspicious_only["name"] = suspicious_only["name"].fillna("(unknown name)")
-    business_ids = sorted(suspicious_only["business_id"].unique().tolist())
+    # Base filtered dataframe — no min_susp_users filter, used by overview and demo tabs
+    suspicious_with_names = suspicious[
+        pd.to_numeric(suspicious.get("suspicious_user_count"), errors="coerce").fillna(0) > 0
+    ].copy()
+    suspicious_with_names = suspicious_with_names.merge(restaurants, on="business_id", how="left")
+    suspicious_with_names["name"] = suspicious_with_names["name"].fillna("(unknown name)")
 
     impact_enriched = _delta_columns(impact)
 
-    overview_tab, explorer_tab, distributions_tab, exports_tab = st.tabs(
-        ["Overview", "Case explorer", "Distributions", "Exports"]
+    demo_tab, overview_tab, explorer_tab, distributions_tab, exports_tab = st.tabs(
+        ["Demo", "Overview", "Case explorer", "Distributions", "Exports"]
     )
+
+    with demo_tab:
+        st.subheader("Business Authenticity Checker")
+        
+        # search box
+        business_search = st.selectbox(
+            "Search for a restaurant",
+            options=restaurants["name"].sort_values().unique(),
+        )
+        run_check = st.button("Check Authenticity")
+
+        if run_check:
+            business_id = restaurants[restaurants["name"] == business_search]["business_id"].iloc[0]
+            biz_suspicious = suspicious_with_names[suspicious_with_names["business_id"] == business_id]
+            biz_user_ids = biz_reviews[biz_reviews["business_id"] == business_id]["user_id"].unique()
+            biz_anomalous_users = anomaly_scores[(anomaly_scores["user_id"].isin(biz_user_ids)) & (anomaly_scores["is_anomaly"] == 1)]
+            biz_clusters = clusters[clusters["user_id"].isin(biz_anomalous_users["user_id"])] if not biz_anomalous_users.empty else pd.DataFrame()
+            biz_impact = impact_enriched[impact_enriched["business_id"] == business_id]
+
+            score = 0
+
+            # has review spikes
+            if not biz_suspicious.empty:
+                score += 20
+
+            # has anomalous users
+            if not biz_suspicious.empty and biz_suspicious["suspicious_user_count"].sum() > 0:
+                score += 20
+
+            # users in a review farm cluster
+            if not biz_clusters.empty:
+                score += 40
+
+            # rating changed significantly during spike
+            if not biz_impact.empty and "delta_after_before" in biz_impact.columns:
+                if biz_impact["delta_after_before"].abs().max() > 0.3:
+                    score += 20
+           
+            st.divider()
+            if score >= 50:
+                st.error(f"⚠️ Suspicious Activity Detected — Authenticity Score: {score}/100")
+            else:
+                st.success(f"✅ No Suspicious Activity Found — Authenticity Score: {score}/100")
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("Review Spikes", len(biz_suspicious))
+            with c2:
+                st.metric("Suspicious Users", int(biz_suspicious["suspicious_user_count"].sum()) if not biz_suspicious.empty else 0)
+            with c3:
+                st.metric("Review Farm Clusters", biz_clusters["cluster_id"].nunique() if not biz_clusters.empty else 0)
+
+            if not biz_impact.empty:
+                st.divider()
+                st.subheader("Rating Impact")
+                r = biz_impact.iloc[0].to_dict()
+                m1, m2, m3, m4 = st.columns(4)
+                with m1:
+                    st.metric("Avg stars before", f"{r.get('avg_stars_before', float('nan')):.3f}")
+                with m2:
+                    st.metric("Avg stars during", f"{r.get('avg_stars_during', float('nan')):.3f}")
+                with m3:
+                    st.metric("Avg stars after", f"{r.get('avg_stars_after', float('nan')):.3f}")
+                with m4:
+                    d = r.get("delta_after_before", float("nan"))
+                    st.metric("Δ (after - before)", f"{d:.3f}" if pd.notna(d) else "n/a")
+
+
 
     with overview_tab:
         st.subheader("Overview")
@@ -115,15 +182,15 @@ def main() -> None:
         with c1:
             st.metric("Spike days", int(len(suspicious)))
         with c2:
-            st.metric("Spike days w/ suspicious users", int(len(suspicious_only)))
+            st.metric("Spike days w/ suspicious users", int(len(suspicious_with_names)))
         with c3:
-            st.metric("Unique suspicious businesses", int(suspicious_only["business_id"].nunique()))
+            st.metric("Unique suspicious businesses", int(suspicious_with_names["business_id"].nunique()))
         with c4:
             st.metric("Impact events", int(len(impact)))
 
         st.divider()
         st.subheader("Top cases (quick picks)")
-        pick_df = suspicious_only.merge(
+        pick_df = suspicious_with_names.merge(
             impact_enriched,
             on=["business_id", "spike_date"],
             how="inner",
@@ -158,12 +225,21 @@ def main() -> None:
     with explorer_tab:
         st.subheader("Explore a business")
 
+        plot_days = st.number_input("Timeline plot range (days ±)", min_value=7, max_value=180, value=30, step=7)
+        min_susp_users = st.slider("Minimum suspicious users (filter)", min_value=1, max_value=50, value=1, step=1)
+
+        # Apply filter here, only for explorer tab
+        suspicious_filtered = suspicious_with_names[
+            pd.to_numeric(suspicious_with_names.get("suspicious_user_count"), errors="coerce").fillna(0) >= int(min_susp_users)
+        ]
+        business_ids = sorted(suspicious_filtered["business_id"].unique().tolist())
+
         if not business_ids:
             st.warning("No suspicious businesses found for the current filter.")
             st.stop()
 
         # Quick pick -> sets session selections
-        pick_df = suspicious_only.merge(
+        pick_df = suspicious_filtered.merge(
             impact_enriched,
             on=["business_id", "spike_date"],
             how="inner",
@@ -192,7 +268,7 @@ def main() -> None:
             default_spike = None
 
         id_to_name = (
-            suspicious_only[["business_id", "name"]]
+            suspicious_filtered[["business_id", "name"]]
             .drop_duplicates()
             .set_index("business_id")["name"]
             .to_dict()
@@ -207,7 +283,7 @@ def main() -> None:
         )
 
         # Events for this business
-        biz_events = suspicious_only[suspicious_only["business_id"] == selected_business].copy()
+        biz_events = suspicious_filtered[suspicious_filtered["business_id"] == selected_business].copy()
         biz_events = biz_events.sort_values("spike_date")
 
         st.write("Spike events for selected business:")
@@ -243,7 +319,7 @@ def main() -> None:
 
         # Load review timeline for this business (only for chosen time window)
         # Use Spark parquet partitioning directly via pandas: we rely on pyarrow dataset.
-        reviews = load_parquet(str(reviews_path))
+        reviews = biz_reviews.copy()
         reviews = reviews[["business_id", "date", "stars"]].copy()
         reviews["business_id"] = reviews["business_id"].astype(str)
         reviews = reviews[reviews["business_id"] == selected_business]
@@ -339,7 +415,7 @@ def main() -> None:
                     st.bar_chart(dfd["delta_after_before"].value_counts(bins=20).sort_index())
             with c2:
                 st.markdown("**Scatter: suspicious users vs Δ rating**")
-                scat = suspicious_only.merge(
+                scat = suspicious_with_names.merge(
                     dfd[["business_id", "spike_date", "delta_after_before"]],
                     on=["business_id", "spike_date"],
                     how="inner",
@@ -357,7 +433,7 @@ def main() -> None:
 
     with exports_tab:
         st.subheader("Exports")
-        joined = suspicious_only.merge(
+        joined = suspicious_with_names.merge(
             impact_enriched,
             on=["business_id", "spike_date"],
             how="left",
