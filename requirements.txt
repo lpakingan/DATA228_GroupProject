@@ -3,6 +3,6 @@ pyarrow
 scikit-learn
 networkx
 streamlit
-pyspark
+pyspark==3.5.3
 mlflow
 plotly
