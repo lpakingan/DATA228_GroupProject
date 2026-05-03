@@ -1,150 +1,42 @@
 # Case Studies: User Anomaly Detection
 
-**Model:** LOF (Local Outlier Factor), contamination=0.01, neighbors=100, euclidiean 
+**Model:** IF (Isolation Forest), contamination=0.05, n_estimators=300  
 **Input:** `outputs/user_anomaly_scores.parquet`  
-**Total users scored:** 14,096 anomalies (out of 1,445,990 unique users)
+**Total users scored:** 72,300 anomalies (out of 1,445,990 unique users)
 
 ---
 
-**Dataset Overview**
-	user_id	avg_stars_given	pct_5_star_reviews	pct_1_star_reviews	review_count	reviews_per_day	account_age_days	num_friends	anomaly_score	is_anomaly	anomaly_rank
-0	nnImk681KaRqUVHlSfZjGQ	3.895792	0.388778	0.046092	499	0.069104	7221.0	4214.0	0.233902	1	1
-1	6s-g2vFu12OemhiK3FJuOQ	3.653120	0.111756	0.007257	689	0.098288	7010.0	4449.0	0.232997	1	2
-2	y8aWXOimQ9ZgUgZ6q--nCQ	3.868996	0.344978	0.056769	229	0.033956	6744.0	1716.0	0.231222	1	3
-3	bJ5FtCtZX3ZZacz2_2PJjA	4.069281	0.326797	0.011765	765	0.111500	6861.0	1538.0	0.230635	1	4
-4	Ase_kJIYuT6yOsqqVPuWUA	3.526515	0.219697	0.053030	264	0.041089	6425.0	1793.0	0.229916	1	5
+### **Dataset Overview**
+* **Data Cleanup:** 6 users have `NaN` number_of_friends and account_age_days, so would have to look at manually.
+* **Zero-friend anomalies:** 9,954
 
 ---
 
-**Key Finding: What Drives Anomaly Score**
+### **Key Finding: What Drives Anomaly Score**
 
-Correlation with anomaly score:
+#### **1. High Activity Velocity**
+The **`reviews_per_day`** is a leading indicator of anomaly.
 
-| Feature | Correlation |
-|---|---|
-| reviews_per_day | 0.504 |
-| review_count | 0.474 |
-| num_friends | 0.387 |
+**Correlation with Anomaly Score:**
+* `anomaly_score`: 1.000000
+* `reviews_per_day`: 0.504473
+* `review_count`: 0.474385
+* `num_friends`: 0.387104
 
-Review velocity and volume are the strongest signals of anomaly.  
-High friend counts also contribute, but may not be the case all the time. In some cases this likely reflects highly active legitimate users (“power users”) rather than suspicious activity.
+> **What this means:** The model aggressively flags users who post a lot of reviews in a short amount of time (**hyper-active**).
 
----
+#### **2. Sentiment and "Review Bombing"**
+There is a negative correlation between the anomaly score and **`avg_stars_given` (-0.42)** and **`pct_5_star_reviews` (-0.41)**.
 
-**Case Study 1: Power Users / Social Hubs**
+> **What this means:** As the star rating goes down, the anomaly score goes up and the model is sensitive to **"review bombing" of 1-star reviews**. These accounts are more anomalous than those posting positive reviews.
 
-Top-ranked anomalous users:
+#### **3. Social Behavior**
+The correlation with **`num_friends` is 0.39**.
 
-| user_id | review_count | reviews_per_day | num_friends | anomaly_score |
-|---|---|---|---|---|
-| nnImk681KaRqUVHlSfZjGQ | 499 | 0.069 | 4214 | 0.2339 |
-| 6s-g2vFu12OemhiK3FJuOQ | 689 | 0.098 | 4449 | 0.2330 |
-| y8aWXOimQ9ZgUgZ6q--nCQ | 229 | 0.034 | 1716 | 0.2312 |
-| bJ5FtCtZX3ZZacz2_2PJjA | 765 | 0.112 | 1538 | 0.2306 |
-| Ase_kJIYuT6yOsqqVPuWUA | 264 | 0.041 | 1793 | 0.2299 |
+> **What this means:** This suggests that extreme social behavior is being flagged -- either having a massive number of friends (fake followers) or a very specific, rare number of friends. The users with many friends are flagged as top anomalous users.
 
-These users exhibit extremely high review counts and large social networks.  
-Their review frequency is significantly higher than the median user, indicating strong engagement.
-
-**Interpretation:**  
-Although these users are flagged as anomalies, their behavior is consistent with highly active “power users” rather than malicious accounts. 
-Their anomaly status is driven primarily by scale (activity and connectivity), not necessarily suspicious intent.
-
----
-
-**Case Study 2: Isolated High-Risk Users (0 Friends)**
-
-| user_id | avg_stars | pct_1_star | review_count | anomaly_rank |
-|---|---|---|---|---|
-| QG-5Xa3R9_TmDDL4g9BiRA | 1.89 | 69.0% | 84 | 588 |
-| Z6gS-BqSWT35vY1XtGLLeQ | 1.78 | 57.4% | 68 | 1014 |
-| sGCCjnXG_3SoUmqwyswEfA | 2.12 | 54.1% | 135 | 1112 |
-| hPtHL1JLtYIIrCDhrjUBaQ | 2.93 | 26.5% | 298 | 1236 |
-
-These users have:
-- no social connections (`num_friends = 0`)
-- consistently low ratings
-- a high proportion of 1-star reviews
-- moderate to high review activity
-
-**Interpretation:**  
-This combination of strong negative bias and complete social isolation suggests potential behavior that has been artificially created. These accounts may have been created primarily to post negative reviews, consistent with review bombing patterns.
-
-Not all users in this group exhibit extreme behavior (e.g., some have mixed ratings).
-This indicates that anomaly detection captures a spectrum of deviations from typical user behavior.
-
----
-
-**Case Study 3: High-Activity Reviewers**
-
-Users with `reviews_per_day > 0.1`:
-
-| user_id | review_count | reviews_per_day | num_friends | anomaly_rank |
-|---|---|---|---|---|
-| _BcWyKQL16ndpBdggh2kNA | 1704 | 0.261 | 3708 | 8 |
-| -G7Zkl1wIWBBmD0KRy_sCw | 1297 | 0.266 | 1787 | 51 |
-| ET8n-r7glWYqZhuR6GcdNw | 1144 | 0.173 | 5958 | 16 |
-| ouODopBKF3AqfCkuQEnrDg | 956 | 0.163 | 1141 | 26 |
-
-These users demonstrate extremely high review velocity compared to the median user (0.003 reviews/day), often exceeding it by 30–80 times.
-
-**Interpretation:**  
-Unusually high activity levels suggest possible coordinated behavior or automated reviewing patterns. While some may still be actual users, the scale and consistency of activity raise concerns about potential manipulation.
-
-
----
-
-**Summary**
----
-* Analysis was made using median instead of mean as median is not affected by outliers
-
-Anomaly strength is the measure of to how far a user’s behavior deviates from typical patterns:
-- Higher anomaly scores -> more extreme deviations
-- Lower anomaly scores -> more moderate differences
----
-**Types**
-
-A: Power Users (Statistical Outliers)
-Key Signals: High review activity + high social connectivity (4k+ friends)
-
-- Likely legitimate, highly engaged users
-- While they are mathematically anomalous due to their scale of activity, their high friend count provides social proof that distinguishes them from automated bots
-
-B: Isolated High-Risk Users (Potential Review Bombing)
-Key Signals: Zero social connections (num_friends = 0) + High 1-star review proportion
-
-- Exhibit patterns consistent with review bombing
-- Suggests accounts created primarily for reputation damage
-
-C: High-Frequency Reviewers (Potential Automated Activity)
-Key Signals: Extremely high review frequency (up to 87 times the median user)
-
-- Likely to be coordinated or automated behavior
-- ~0.26 reviews/day over the account lifetime suggests the presence of non-organic activity patterns
-
----
-**Note on Social Connection and Suspicion Relationships:**
-
-Strong relationship between social connectivity (friends) and suspicion. 
-The model heavily flags users with zero friends as high-risk anomalies (the red cluster at x=0), while also isolating 'Extreme Power Users' with outlier friend counts exceeding 10,000
-
----
-**Note on Model Sensitivity Analysis:**
-
-The model is very sensitive to contamination. When the contamination value increases, the model labels more users as anomalies, but not all of them are extremely suspicious.
-At lower contamination levels, only the most extreme outliers are identified, while higher values include more moderate deviations. A contamination level of 0.05 provides a balanced trade-off between detection coverage and anomaly strength.
-
----
-**Note on Heatmap:**
-
-The negative correlation between avg_stars_given and anomaly score (-0.42) indicates that the model currently associates lower ratings with higher suspicion, suggesting that Review Bombers (accounts created for targeted negative attacks) are easier for the Isolation Forest to detect than reviews that are made to boost ratings.
-
----
-**Extra:**
-
-Because positive reviews are the "norm" on Yelp, an account that posts fake 5-star reviews "blends in" with organic users more easily compared to someone posting 1-star reviews aggressively. 
-
-As a result, rating-based features alone are not always sufficient to identify suspicious users. The results suggest that review velocity (reviews_per_day) is a strong contributing factor in identifying anomalous users.
+#### **4. Positive Bias**
+Users who only gives out 5-star reviews exist.
 
 ---
 
