@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Default user anomaly pipeline: Local Outlier Factor with n_neighbors=100 (contamination 0.01).
+Default user anomaly pipeline: Isolation Forest (5% contamination, 300 trees, max_features=1.0).
 
-Matches preprocessing in user_anomaly_lof_k100_test.py (Gaussian jitter + RobustScaler → LOF).
+Preprocessing: median imputation only (no jitter, no scaling).
 
 Reads:
   data/processed/user_features.parquet
@@ -11,8 +11,6 @@ Writes:
 
 Logs:
   MLflow experiment user_anomaly_detection — params, metrics, model artifact.
-
-Isolation Forest multi-config baseline: scripts/user_anomaly_if.py
 """
 
 from __future__ import annotations
@@ -22,13 +20,10 @@ import sys
 from pathlib import Path
 
 import mlflow
-import mlflow.sklearn
 import numpy as np
 import pandas as pd
 import sklearn
-from sklearn.neighbors import LocalOutlierFactor
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import RobustScaler
+from sklearn.ensemble import IsolationForest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -38,13 +33,12 @@ DEFAULT_OUTPUT = PROJECT_ROOT / "outputs" / "user_anomaly_scores.parquet"
 DEFAULT_EXPERIMENT = "user_anomaly_detection"
 TRACKING_URI_DEFAULT = "http://localhost:5001"
 
-CONTAMINATION = 0.01
-N_NEIGHBORS = 100
-METRIC = "euclidean"
-CONFIG_NAME = "lof_c001_k100"
-
-JITTER_STD = 1e-6
-JITTER_RANDOM_STATE = 42
+# Isolation Forest parameters
+CONTAMINATION = 0.05
+N_ESTIMATORS = 300
+MAX_FEATURES = 1.0
+RANDOM_STATE = 42
+CONFIG_NAME = "if_c005_est300_mf10"
 
 FEATURE_COLUMNS = [
     "avg_stars_given",
@@ -56,81 +50,64 @@ FEATURE_COLUMNS = [
     "num_friends",
 ]
 
-# Validate the input data
+# Validate the inputs
 def validate_inputs(df: pd.DataFrame) -> None:
     missing = [c for c in ["user_id", *FEATURE_COLUMNS] if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
 
-# Prepare the features
+# Prepare the features by imputing the median
 def prepare_features(user_df: pd.DataFrame) -> pd.DataFrame:
-    rng = np.random.default_rng(JITTER_RANDOM_STATE)
     model_input = user_df[FEATURE_COLUMNS].copy()
     for col in FEATURE_COLUMNS:
         model_input[col] = pd.to_numeric(model_input[col], errors="coerce")
-        # Replace infinity with NaN
         model_input[col] = model_input[col].replace([np.inf, -np.inf], np.nan)
-        # Fill the missing values with the median
         med = model_input[col].median()
         model_input[col] = model_input[col].fillna(0 if pd.isna(med) else med)
-        # Add jitter
-        noise = rng.normal(0, JITTER_STD, size=len(model_input))
-        model_input[col] = model_input[col] + noise
     return model_input
 
-# Make the LOF pipeline
-def make_lof_pipeline() -> Pipeline:
-    return Pipeline(
-        [
-            # Scale the features - RobustScaler because it's robust to outliers
-            ("scaler", RobustScaler()),
-            # Local Outlier Factor - novelty=True because we're detecting anomalies in new data
-            (
-                "lof",
-                LocalOutlierFactor(
-                    # Number of neighbors to use for LOF
-                    n_neighbors=N_NEIGHBORS,
-                    # Contamination - percentage of outliers in the data
-                    contamination=CONTAMINATION,    
-                    # Metric to use for distance calculation
-                    metric=METRIC,
-                    # Whether to use the novelty detection mode
-                    novelty=True,
-                    # Number of jobs to run in parallel
-                    n_jobs=-1,
-                ),
-            ),
-        ]
+# Make the Isolation Forest model
+def make_isolation_forest() -> IsolationForest:
+    return IsolationForest(
+        n_estimators=N_ESTIMATORS,
+        contamination=CONTAMINATION,
+        max_features=MAX_FEATURES,
+        random_state=RANDOM_STATE,
+        n_jobs=-1,
     )
 
 
 def main() -> None:
     DEFAULT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    # Create the output directory if it doesn't exist
+
+    # Read the user features
     print(f"Reading user features: {DEFAULT_INPUT}")
     user_df = pd.read_parquet(DEFAULT_INPUT)
     print(f"Loaded {len(user_df):,} rows — validating…")
     validate_inputs(user_df)
-    # Prepare the features
-    print("Preparing feature matrix (Gaussian jitter + RobustScaler in pipeline)…")
+
+    # Prepare the feature matrix
+    print("Preparing feature matrix (median imputation → Isolation Forest)…")
     model_input = prepare_features(user_df)
     model_input_example = model_input.head(5)
-    # Set the tracking URI and experiment
+
     mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", TRACKING_URI_DEFAULT))
     mlflow.set_experiment(DEFAULT_EXPERIMENT)
-    # Start the MLflow run
+
+    # Set the run name
     run_name = f"user_anomaly_{CONFIG_NAME}"
     print(
-        f"MLflow run {run_name} | LOF n_neighbors={N_NEIGHBORS}, "
-        f"contamination={CONTAMINATION}"
+        f"MLflow run {run_name} | IF contamination={CONTAMINATION}, "
+        f"n_estimators={N_ESTIMATORS}, max_features={MAX_FEATURES}"
     )
-    # Log the parameters
+
     with mlflow.start_run(run_name=run_name):
-        mlflow.log_param("model_type", "local_outlier_factor")
+        mlflow.log_param("model_type", "isolation_forest")
         mlflow.log_param("config_name", CONFIG_NAME)
         mlflow.log_param("contamination", CONTAMINATION)
-        mlflow.log_param("n_neighbors", N_NEIGHBORS)
-        mlflow.log_param("metric", METRIC)
+        mlflow.log_param("n_estimators", N_ESTIMATORS)
+        mlflow.log_param("max_features", MAX_FEATURES)
+        mlflow.log_param("random_state", RANDOM_STATE)
         mlflow.log_param("input_path", str(DEFAULT_INPUT))
         mlflow.log_param("output_path", str(DEFAULT_OUTPUT))
         mlflow.log_param("feature_columns", ",".join(FEATURE_COLUMNS))
@@ -140,30 +117,27 @@ def main() -> None:
         mlflow.log_param("pandas_version", pd.__version__)
         mlflow.log_param("sklearn_version", sklearn.__version__)
         mlflow.log_param("mlflow_version", mlflow.__version__)
-        mlflow.log_param("feature_scaling", "RobustScaler")
-        mlflow.log_param("jitter", "gaussian_prepare_features")
-        mlflow.log_param("jitter_std", JITTER_STD)
-        mlflow.log_param("jitter_random_state", JITTER_RANDOM_STATE)
+        mlflow.log_param("feature_scaling", "none")
+        mlflow.log_param("jitter", "none")
 
-        # Make the LOF pipeline
-        pipe = make_lof_pipeline()
-        pipe.fit(model_input)
-        # Predict the anomalies
-        pred = pipe.predict(model_input)
-        # Create the result dataframe (1 = anomaly, 0 = not anomaly)
+        model = make_isolation_forest()
+        model.fit(model_input)
+        pred = model.predict(model_input)
         is_anomaly = (pred == -1).astype(int)
-        # Score the anomalies - higher scores = more anomalous
-        anomaly_score = -pipe.score_samples(model_input)
+        # Calculate the anomaly score - decision_function: higher => more normal
+        # then negate so higher => more anomalous
+        anomaly_score = -model.decision_function(model_input)
 
         # Create the result dataframe
         result_df = user_df[["user_id", *FEATURE_COLUMNS]].copy()
         # Add the anomaly score and is_anomaly columns
         result_df["anomaly_score"] = anomaly_score
+        # Add the is_anomaly column
         result_df["is_anomaly"] = is_anomaly
+        # Add the anomaly rank column
         result_df["anomaly_rank"] = (
             result_df["anomaly_score"].rank(method="first", ascending=False).astype(int)
         )
-        # Sort the result dataframe by anomaly score descending
         result_df = result_df.sort_values("anomaly_score", ascending=False)
 
         result_df.to_parquet(DEFAULT_OUTPUT, index=False)
@@ -186,7 +160,7 @@ def main() -> None:
 
         # Log the model
         mlflow.sklearn.log_model(
-            pipe, artifact_path="model", input_example=model_input_example
+            model, artifact_path="model", input_example=model_input_example
         )
         mlflow.log_artifact(str(DEFAULT_OUTPUT))
 
