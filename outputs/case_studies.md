@@ -1,21 +1,18 @@
 # Case Studies: User Anomaly Detection
 
-**Model:** Isolation Forest (config: v1_c005, contamination=0.05)  
+**Model:** LOF (Local Outlier Factor), contamination=0.01, neighbors=100, euclidiean 
 **Input:** `outputs/user_anomaly_scores.parquet`  
-**Total users scored:** 72,300 (~3,615 flagged as anomalies)
+**Total users scored:** 14,096 anomalies (out of 1,445,990 unique users)
 
 ---
 
 **Dataset Overview**
-
-| Metric | Value |
-|---|---|
-| Total users scored | 72,300 |
-| Mean review count | 23.8 |
-| Median reviews/day | 0.003 |
-| Median num_friends | 120 |
-| Max reviews/day | 0.269 |
-| Max num_friends | 14,995 |
+	user_id	avg_stars_given	pct_5_star_reviews	pct_1_star_reviews	review_count	reviews_per_day	account_age_days	num_friends	anomaly_score	is_anomaly	anomaly_rank
+0	nnImk681KaRqUVHlSfZjGQ	3.895792	0.388778	0.046092	499	0.069104	7221.0	4214.0	0.233902	1	1
+1	6s-g2vFu12OemhiK3FJuOQ	3.653120	0.111756	0.007257	689	0.098288	7010.0	4449.0	0.232997	1	2
+2	y8aWXOimQ9ZgUgZ6q--nCQ	3.868996	0.344978	0.056769	229	0.033956	6744.0	1716.0	0.231222	1	3
+3	bJ5FtCtZX3ZZacz2_2PJjA	4.069281	0.326797	0.011765	765	0.111500	6861.0	1538.0	0.230635	1	4
+4	Ase_kJIYuT6yOsqqVPuWUA	3.526515	0.219697	0.053030	264	0.041089	6425.0	1793.0	0.229916	1	5
 
 ---
 
