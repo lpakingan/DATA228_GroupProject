@@ -30,6 +30,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT = PROJECT_ROOT / "data" / "processed" / "user_features.parquet"
 DEFAULT_OUTPUT = PROJECT_ROOT / "outputs" / "user_anomaly_scores.parquet"
 
+# What to look for on MLflow
 DEFAULT_EXPERIMENT = "user_anomaly_detection"
 TRACKING_URI_DEFAULT = "http://localhost:5001"
 
@@ -86,8 +87,11 @@ def main() -> None:
     print(f"Loaded {len(user_df):,} rows — validating…")
     validate_inputs(user_df)
 
+    # Drop the 6 rows where critical metrics are missing
+    user_df = user_df.dropna(subset=["account_age_days", "num_friends"])
+
     # Prepare the feature matrix
-    print("Preparing feature matrix (median imputation → Isolation Forest)…")
+    print("Preparing feature matrix (median imputation -> Isolation Forest)…")
     model_input = prepare_features(user_df)
     model_input_example = model_input.head(5)
 
