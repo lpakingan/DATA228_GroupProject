@@ -2,8 +2,6 @@
 """
 Default user anomaly pipeline: Isolation Forest (5% contamination, 300 trees, max_features=1.0).
 
-Preprocessing: median imputation only (no jitter, no scaling).
-
 Reads:
   data/processed/user_features.parquet
 Writes:
@@ -121,8 +119,6 @@ def main() -> None:
         mlflow.log_param("pandas_version", pd.__version__)
         mlflow.log_param("sklearn_version", sklearn.__version__)
         mlflow.log_param("mlflow_version", mlflow.__version__)
-        mlflow.log_param("feature_scaling", "none")
-        mlflow.log_param("jitter", "none")
 
         model = make_isolation_forest()
         model.fit(model_input)
