@@ -1,6 +1,6 @@
 # Case Studies: User Anomaly Detection
 
-**Model:** IF (Isolation Forest), CONTAMINATION = 0.05, N_ESTIMATORS = 300, MAX_FEATURES = 1.0, RANDOM_STATE = 42
+**Model:** IF (Isolation Forest), CONTAMINATION = 0.05, N_ESTIMATORS = 300, MAX_FEATURES = 1.0, RANDOM_STATE = 42  
 **Input:** `outputs/user_anomaly_scores.parquet`  
 **Total users scored:** 72,300 anomalies (out of 1,445,984 unique users analyzed)
 
