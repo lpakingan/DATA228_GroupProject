@@ -33,7 +33,7 @@ def main():
     edge_graph = nx.from_pandas_edgelist(edge_df, source='user_id_a', target='user_id_b')
 
     # define communities using networkx
-    communities = community.louvain_communities(edge_graph)
+    communities = community.louvain_communities(edge_graph, seed=42)
 
     # create list of clusters from communities
     clusters = []
