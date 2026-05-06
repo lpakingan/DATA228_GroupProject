@@ -50,30 +50,31 @@ def main() -> None:
     px = _try_import_plotly()
 
     with st.sidebar:
-        st.header("Data paths")
-        outputs_dir = Path(st.text_input("outputs/", str(DEFAULT_OUTPUTS)))
-        processed_dir = Path(st.text_input("data/processed/", str(DEFAULT_PROCESSED)))
-        figures_dir = Path(st.text_input("presentation/figures/", str(DEFAULT_FIGURES)))
+        st.header("About")
+        st.markdown("""
+        This dashboard detects suspicious review activity on Yelp restaurants using unsupervised machine learning.
+        
+        **How the authenticity score works:**
+        - Review spikes detected — 20pts
+        - Anomalous users flagged — 20pts
+        - Users in a review farm cluster — 40pts
+        - Rating changed during spike — 20pts
+        
+        A score ≥ 50 indicates suspicious activity.
+        """)
+        st.divider()
+        st.caption("DATA 228 — Group 5")
 
-        spikes_path = outputs_dir / "review_spikes.parquet"
-        suspicious_path = outputs_dir / "suspicious_businesses.parquet"
-        impact_path = outputs_dir / "rating_impact.parquet"
-        reviews_path = processed_dir / "restaurant_reviews.parquet"
-        restaurants_path = processed_dir / "restaurants_base.parquet"
-        clusters_path = outputs_dir / "user_clusters.parquet"
+    outputs_dir = DEFAULT_OUTPUTS
+    processed_dir = DEFAULT_PROCESSED
+    figures_dir = DEFAULT_FIGURES
 
-        st.caption("Required files:")
-        st.code(
-            "\n".join(
-                [
-                    str(spikes_path),
-                    str(suspicious_path),
-                    str(impact_path),
-                    str(reviews_path),
-                ]
-            ),
-            language="text",
-        )
+    spikes_path = outputs_dir / "review_spikes.parquet"
+    suspicious_path = outputs_dir / "suspicious_businesses.parquet"
+    impact_path = outputs_dir / "rating_impact.parquet"
+    reviews_path = processed_dir / "restaurant_reviews.parquet"
+    restaurants_path = processed_dir / "restaurants_base.parquet"
+    clusters_path = outputs_dir / "user_clusters.parquet"
 
     missing = [p for p in [spikes_path, suspicious_path, impact_path, reviews_path, restaurants_path, clusters_path] if not p.exists()]
     if missing:
@@ -159,20 +160,50 @@ def main() -> None:
             with c3:
                 st.metric("Review Farm Clusters", biz_clusters["cluster_id"].nunique() if not biz_clusters.empty else 0)
 
+            st.divider()
+            st.subheader("Rating Impact")
             if not biz_impact.empty:
-                st.divider()
-                st.subheader("Rating Impact")
-                r = biz_impact.iloc[0].to_dict()
-                m1, m2, m3, m4 = st.columns(4)
-                with m1:
-                    st.metric("Avg stars before", f"{r.get('avg_stars_before', float('nan')):.3f}")
-                with m2:
-                    st.metric("Avg stars during", f"{r.get('avg_stars_during', float('nan')):.3f}")
-                with m3:
-                    st.metric("Avg stars after", f"{r.get('avg_stars_after', float('nan')):.3f}")
-                with m4:
-                    d = r.get("delta_after_before", float("nan"))
-                    st.metric("Δ (after - before)", f"{d:.3f}" if pd.notna(d) else "n/a")
+                valid_impact = biz_impact.dropna(subset=["delta_after_before"])
+                if not valid_impact.empty:
+                    r = valid_impact.loc[valid_impact["delta_after_before"].abs().idxmax()].to_dict()
+                else:
+                    r = biz_impact.iloc[0].to_dict()
+            else:
+                r = {}
+
+            m1, m2, m3, m4 = st.columns(4)
+            with m1:
+                st.metric("Avg stars before", f"{r.get('avg_stars_before', float('nan')):.3f}" if r.get('avg_stars_before') else "n/a")
+            with m2:
+                st.metric("Avg stars during", f"{r.get('avg_stars_during', float('nan')):.3f}" if r.get('avg_stars_during') else "n/a")
+            with m3:
+                st.metric("Avg stars after", f"{r.get('avg_stars_after', float('nan')):.3f}" if r.get('avg_stars_after') else "n/a")
+            with m4:
+                d = r.get("delta_after_before", float("nan"))
+                st.metric("Δ (after - before)", f"{d:.3f}" if pd.notna(d) else "n/a")
+            st.divider()
+            st.subheader("Review Timeline")
+            demo_reviews = biz_reviews[biz_reviews["business_id"] == business_id].copy()
+            demo_reviews["review_date"] = pd.to_datetime(demo_reviews["date"]).dt.date
+            
+            daily_counts = (
+                demo_reviews.groupby("review_date", as_index=False)
+                .size()
+                .rename(columns={"size": "reviews"})
+                .sort_values("review_date")
+            )
+            
+            if px is not None:
+                max_reviews = max(daily_counts["reviews"].max() * 1.2, 5)
+                fig = px.line(daily_counts, x="review_date", y="reviews", markers=True, 
+                            title="Reviews per day",
+                            range_y=[0, max_reviews])
+                if not biz_suspicious.empty:
+                    for _, spike_row in biz_suspicious.iterrows():
+                        fig.add_vline(x=pd.to_datetime(spike_row["spike_date"]), 
+                                    line_color="red", line_dash="dash", line_width=2)
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("Red lines indicate detected spike dates.")
 
 
 
@@ -299,7 +330,16 @@ def main() -> None:
                     "suspicious_user_count",
                     "max_anomaly_score",
                 ]
-            ],
+            ].rename(columns={
+                "spike_date": "Spike Date",
+                "review_count": "Reviews on Spike Day",
+                "baseline_mean": "Baseline Avg",
+                "abs_increase": "Increase",
+                "total_reviews_in_window": "Total Reviews (window)",
+                "suspicious_reviews_in_window": "Suspicious Reviews",
+                "suspicious_user_count": "Suspicious Users",
+                "max_anomaly_score": "Max Anomaly Score",
+            }),
             width="stretch",
             hide_index=True,
         )
