@@ -6,3 +6,6 @@ streamlit
 pyspark==3.5.3
 mlflow
 plotly
+fastapi
+uvicorn
+matplotlib
